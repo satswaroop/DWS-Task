@@ -32,7 +32,7 @@ public class AccountsService {
     return this.accountsRepository.getAccount(accountId);
   }
 
-  public synchronized void transferMoney(String accountFromId, String accountToId, BigDecimal amount) {
+  public void transferMoney(String accountFromId, String accountToId, BigDecimal amount) {
 
     // Check for non-positive amount
     if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -46,18 +46,25 @@ public class AccountsService {
       throw new IllegalArgumentException("Both accounts must exist.");
     }
 
-    synchronized (accountFrom) {
-      synchronized (accountTo) {
+    // Lock ordering to prevent deadlock
+    Object lock1 = accountFromId.compareTo(accountToId) < 0 ? accountFrom : accountTo;
+    Object lock2 = accountFromId.compareTo(accountToId) < 0 ? accountTo : accountFrom;
+
+    synchronized (lock1) {
+      synchronized (lock2) {
         if (accountFrom.getBalance().compareTo(amount) < 0) {
           throw new IllegalArgumentException("Insufficient funds in account " + accountFromId);
         }
 
+        // Perform the transfer
         accountFrom.setBalance(accountFrom.getBalance().subtract(amount));
         accountTo.setBalance(accountTo.getBalance().add(amount));
 
+        // Notify about the transfer
         notificationService.notifyAboutTransfer(accountFrom, "Transferred " + amount + " to account " + accountToId);
         notificationService.notifyAboutTransfer(accountTo, "Received " + amount + " from account " + accountFromId);
       }
     }
   }
+
 }
